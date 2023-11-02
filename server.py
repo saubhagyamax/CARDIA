@@ -6,12 +6,14 @@ from sklearn.model_selection import train_test_split
 import pandas as pd
 import flwr as fl
 import tensorflow as tf
+import matplotlib.pyplot as plt
 
 
 def main() -> None:
     # Load and compile model for
     # 1. server-side parameter initialization
     # 2. server-side parameter evaluation
+
     model = Sequential()
     model.add(Dense(11,activation='relu',input_dim=13))
     model.add(Dense(1,activation='sigmoid'))
@@ -30,16 +32,11 @@ def main() -> None:
         initial_parameters=fl.common.ndarrays_to_parameters(model.get_weights()),
     )
 
-    # Start Flower server (SSL-enabled) for four rounds of federated learning
+    # Start Flower server for four rounds of federated learning
     fl.server.start_server(
         server_address="0.0.0.0:8080",
         config=fl.server.ServerConfig(num_rounds=4),
-        strategy=strategy,
-        # certificates=(
-        #     Path(".cache/certificates/ca.crt").read_bytes(),
-        #     Path(".cache/certificates/server.pem").read_bytes(),
-        #     Path(".cache/certificates/server.key").read_bytes(),
-        # ),
+        strategy=strategy
     )
 
 
@@ -60,6 +57,14 @@ def get_evaluate_fn(model):
     ) -> Optional[Tuple[float, Dict[str, fl.common.Scalar]]]:
         model.set_weights(parameters)  # Update model with the latest parameters
         loss, accuracy = model.evaluate(x_val, y_val)
+
+        global loss_history
+        loss_history.append(loss)
+        global accuracy_history
+        accuracy_history.append(accuracy)
+        global round_history
+        round_history.append(server_round)
+
         return loss, {"accuracy": accuracy}
 
     return evaluate
@@ -71,7 +76,7 @@ def load_partition():
     predictors = dataset.drop("target",axis=1)
     target = dataset["target"]
 
-    X_train,X_test,Y_train,Y_test = train_test_split(predictors,target,test_size=0.20,random_state=0)
+    X_train,X_test,Y_train,Y_test = train_test_split(predictors,target,test_size=0.20,random_state=42)
     return (X_train, Y_train), (X_test, Y_test)
 
 
@@ -99,5 +104,29 @@ def evaluate_config(server_round: int):
     return {"val_steps": val_steps}
 
 
+def plot1(round_history,loss_history):
+    
+    plt.plot(round_history,loss_history)
+    plt.title('rounds vs loss')
+    plt.xlabel('round')
+    plt.ylabel('loss')
+    plt.show()
+    
+def plot2(round_history,accuracy_history):
+    plt.plot(round_history,accuracy_history)
+    plt.title('rounds vs accuracy')
+    plt.xlabel('round')
+    plt.ylabel('accuracy')
+    plt.show()
+
+loss_history=[]
+accuracy_history=[]
+round_history=[]
+
+
+
 if __name__ == "__main__":
     main()
+    
+plot1(round_history,loss_history)
+plot2(round_history,accuracy_history)
